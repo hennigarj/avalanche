@@ -1,1 +1,191 @@
-avalanche-start
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Clock Test</title>
+<!-- KEEP your existing manifest link here if you already added one:
+<link rel="manifest" href="manifest.json"> -->
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --fg: #e8e8ea;
+    --dim: #6a6a72;
+    --on: #ff5a3c;
+    --accent: #ffd23c;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: inherit; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+    -webkit-user-select: none; user-select: none;
+    touch-action: manipulation;
+  }
+  h1 { font-size: 13px; font-weight: 600; letter-spacing: .12em;
+       text-transform: uppercase; color: var(--dim); margin: 0 0 24px; }
+
+  #steps {
+    display: grid; grid-template-columns: repeat(8, 1fr);
+    gap: 8px; margin-bottom: 28px;
+  }
+  .step {
+    aspect-ratio: 1; border-radius: 6px;
+    background: #1c1c20; transition: background 40ms linear;
+  }
+  .step.beat { background: #26262c; }
+  .step.lit  { background: var(--on); }
+
+  button {
+    width: 100%; padding: 20px; font: inherit; font-size: 17px;
+    font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--bg); background: var(--fg);
+    border: 0; border-radius: 10px; margin-bottom: 28px;
+  }
+  button.running { background: var(--on); color: #fff; }
+
+  label { display: block; color: var(--dim); font-size: 12px;
+          letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
+  input[type=range] { width: 100%; margin-bottom: 28px; }
+
+  #diag { border-top: 1px solid #26262c; padding-top: 18px;
+          font-size: 13px; color: var(--dim); }
+  #diag div { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  #diag b { color: var(--fg); font-weight: 500; }
+  .bad { color: #ff3c3c !important; }
+</style>
+</head>
+<body>
+
+<h1>Clock Test</h1>
+
+<div id="steps"></div>
+
+<button id="toggle">Start</button>
+
+<label>Tempo — <span id="bpmLabel">120</span> BPM</label>
+<input type="range" id="bpm" min="40" max="200" value="120">
+
+<div id="diag">
+  <div><span>Audio context</span><b id="dState">—</b></div>
+  <div><span>Worst margin</span><b id="dMargin">—</b></div>
+  <div><span>Running for</span><b id="dTime">—</b></div>
+</div>
+
+<script type="module">
+import { Clock } from './clock.js';
+
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const clock = new Clock(ctx);
+
+// A little headroom so clicks never distort.
+const master = ctx.createGain();
+master.gain.value = 0.5;
+master.connect(ctx.destination);
+
+// --- iOS gotcha #2: the ringer switch can silence Web Audio.
+// Modern Safari exposes an audio session type; asking for 'playback'
+// tells iOS this is music, not a UI beep, so the mute switch is ignored.
+if (navigator.audioSession) {
+  try { navigator.audioSession.type = 'playback'; } catch (e) {}
+}
+
+// --- The click sound. Just an oscillator with a fast decay.
+// `time` is an exact future timestamp from the clock.
+function click(step, time) {
+  const osc = ctx.createOscillator();
+  const env = ctx.createGain();
+
+  // Downbeat, beat, and off-beat get different pitches so you can
+  // hear the bar without looking at the screen.
+  osc.frequency.value = step === 0 ? 1600 : (step % 4 === 0 ? 1000 : 700);
+
+  env.gain.setValueAtTime(step % 4 === 0 ? 0.9 : 0.35, time);
+  env.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+
+  osc.connect(env); env.connect(master);
+  osc.start(time);
+  osc.stop(time + 0.05);
+}
+clock.onStep = click;
+
+// --- Build the step grid
+const stepsEl = document.getElementById('steps');
+const cells = [];
+for (let i = 0; i < 16; i++) {
+  const d = document.createElement('div');
+  d.className = 'step' + (i % 4 === 0 ? ' beat' : '');
+  stepsEl.appendChild(d);
+  cells.push(d);
+}
+
+// --- Visuals run on their own loop, reading the clock's queue.
+// Never drive visuals from the audio scheduler directly — audio is
+// booked in the future, the screen should update in the present.
+let lit = -1;
+function frame() {
+  const s = clock.stepForDisplay();
+  if (s !== null && s !== lit) {
+    if (lit >= 0) cells[lit].classList.remove('lit');
+    cells[s].classList.add('lit');
+    lit = s;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// --- Transport
+const toggle = document.getElementById('toggle');
+let startedAt = 0;
+
+toggle.addEventListener('click', async () => {
+  // iOS gotcha #1: the context starts suspended and can ONLY be
+  // resumed from inside a real user gesture. This is that gesture.
+  if (ctx.state !== 'running') await ctx.resume();
+
+  if (clock.isRunning) {
+    clock.stop();
+    toggle.textContent = 'Start';
+    toggle.classList.remove('running');
+    if (lit >= 0) { cells[lit].classList.remove('lit'); lit = -1; }
+  } else {
+    clock.start();
+    startedAt = performance.now();
+    toggle.textContent = 'Stop';
+    toggle.classList.add('running');
+  }
+});
+
+document.getElementById('bpm').addEventListener('input', (e) => {
+  clock.bpm = +e.target.value;
+  document.getElementById('bpmLabel').textContent = e.target.value;
+});
+
+// iOS gotcha #3: audio suspends when you lock or switch apps.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && clock.isRunning) {
+    ctx.resume();
+  }
+});
+
+// --- Diagnostics
+const dState = document.getElementById('dState');
+const dMargin = document.getElementById('dMargin');
+const dTime = document.getElementById('dTime');
+
+setInterval(() => {
+  dState.textContent = ctx.state;
+  if (clock.isRunning) {
+    const m = clock.worstMargin;
+    dMargin.textContent = (m * 1000).toFixed(1) + ' ms';
+    dMargin.classList.toggle('bad', m < 0);
+    dTime.textContent = ((performance.now() - startedAt) / 1000).toFixed(0) + ' s';
+  }
+}, 250);
+</script>
+</body>
+</html>
