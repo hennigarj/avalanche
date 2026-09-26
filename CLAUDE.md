@@ -288,3 +288,11 @@ when the code works. This is a gate, not a motto.
 
 Repo live, Pages deploying, installed to home screen. Clock implemented and
 under test.
+
+## Git workflow
+
+Solo project, no collaborators, no CI. Commit and push directly to
+main — do not create a feature branch or open a pull request unless
+I explicitly ask for one. GitHub Pages deploys straight from main, so
+this is the entire loop: you push, Pages redeploys, I reload on the
+iPad.
