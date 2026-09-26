@@ -17,7 +17,44 @@ if (navigator.audioSession) {
 // don't distort.
 export const master = ctx.createGain();
 master.gain.value = 0.5;
-master.connect(ctx.destination);
+
+// A safety net after the master: a soft clipper. Below 80% of full volume
+// it changes nothing at all. Above that, peaks are rounded off smoothly
+// and can never pass full volume — so a big chord on top of a kick
+// saturates a little instead of crackling.
+//
+// Why not a limiter (DynamicsCompressorNode)? It delays all sound by
+// ~6 ms, keyboard pads included, and adds a "makeup" boost of its own, so
+// it would change the sound even when nothing is too loud.
+const CLIP_KNEE = 0.8;    // where rounding off begins
+const CLIP_RANGE = 4;     // the loudest input it's shaped for
+
+// The clipper's shape, as a table from input level to output level. A
+// WaveShaperNode reads its table for inputs from -1 to 1, so the signal is
+// scaled down by CLIP_RANGE on the way in and the table is stretched to
+// match: entry x stands for an input of x × CLIP_RANGE.
+export function softClipCurve(points = 8193) {
+  const curve = new Float32Array(points);
+  for (let i = 0; i < points; i++) {
+    const s = ((i / (points - 1)) * 2 - 1) * CLIP_RANGE;
+    const a = Math.abs(s);
+    // Straight up to the knee, then bending towards 1 (tanh leaves at the
+    // same slope, so there's no corner to hear).
+    const out = a <= CLIP_KNEE
+      ? a
+      : CLIP_KNEE + (1 - CLIP_KNEE) * Math.tanh((a - CLIP_KNEE) / (1 - CLIP_KNEE));
+    curve[i] = Math.sign(s) * out;
+  }
+  return curve;
+}
+
+const clipIn = ctx.createGain();
+clipIn.gain.value = 1 / CLIP_RANGE;
+const clipper = ctx.createWaveShaper();
+clipper.curve = softClipCurve();
+master.connect(clipIn);
+clipIn.connect(clipper);
+clipper.connect(ctx.destination);
 
 // iOS gotcha #1: the context starts suspended and can only be resumed
 // from inside a real user gesture. Call this from touch handlers.
