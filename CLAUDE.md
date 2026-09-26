@@ -1,79 +1,24 @@
 # CLAUDE.md
 
-Project context and working agreements. Read this before doing anything else.
+Project context and working agreements. Read this first, then read
+`DESIGN.md` before touching anything the user sees or touches.
 
 ---
 
 ## What this is
 
-A pattern-grid groovebox that runs in the browser on an iPad Pro M1, installed
-to the home screen as a web app. A sequencer and sample-based instrument for
-building **whole songs**, not loops.
+A pattern-grid groovebox that runs in the browser on an iPad Pro M1,
+installed to the home screen as a web app. A sequencer and sample-based
+instrument for building **whole songs**, not loops.
 
-The reference point is the Synthstrom Deluge. The goal is not to clone its
-feature list. It is to reproduce the specific thing the Deluge does that almost
-nothing else does: let you hold an entire song in your hands, at any level of
-detail, without ever leaving the surface you started on.
+The reference is the Synthstrom Deluge. The goal is not to clone its feature
+list but to reproduce how it *works*: one grid, one gesture grammar, every
+scale from a single note to a finished arrangement. `DESIGN.md` documents the
+Deluge's model in detail and how each part translates to touch. It is the
+authority on interaction.
 
-An SP-404 MK2 sits alongside it. The 404 is excellent as a sampler and for its
-FX, and unusable for song construction. This app fills that gap. It does not
-need to replace the 404 and should not try to.
-
----
-
-## Why the Deluge worked — the design thesis
-
-This is the most important section in this file. Every feature decision resolves
-against it.
-
-Plenty of software has a grid. FL Studio has a grid, and it never clicked. The
-Deluge did. The difference is mechanical, not aesthetic:
-
-**1. One metaphor, all the way up.**
-A DAW gives you a step sequencer, a piano roll, and a playlist — three surfaces,
-three interaction models, constant context-switching. The Deluge uses one grid
-for steps, notes, clips, and arrangement. You learn one gesture vocabulary and
-it scales from a hi-hat pattern to a finished song.
-
-**2. Zoom replaces modes.**
-The grid is a viewport onto a timeline at arbitrary magnification. Zoomed fully
-out, the whole song occupies a single cell. Deluge users describe zoom not as an
-overview convenience but as the primary editing tool. In a DAW you switch
-*tools* to work at different scales; here you change *magnification*. Same
-surface, same gestures, closer or further away.
-
-**3. No pointer.**
-A mouse is one contact point doing one thing at a time. The Deluge is ten
-fingers on lit pads. An iPad's multi-touch is the closest available analogue and
-must be treated as the primary input, not as a mouse substitute.
-
-**4. No menus.**
-The Deluge exposes near-instant access to most parameters with effectively zero
-menu diving. Every dialog that opens is an idea that evaporates.
-
-**5. Colour as memory.**
-Experienced users navigate by recognition — *that's the one with all the
-greens* — rather than by reading labels. Visual identity beats text.
-
-**6. Boundedness.**
-Eight visible tracks, sixteen columns. An infinite canvas produces paralysis. A
-bounded grid produces decisions.
-
-**7. Always playing.**
-No stop-edit-play cycle. Changes take effect live, in time, while the music
-runs.
-
-### The laws that follow
-
-- **If a feature needs a panel, a dialog, or its own screen, the design is
-  wrong.** Everything happens on the grid, or on a held-modifier overlay on the
-  grid.
-- **Zoom is a gesture, never a setting.** No resolution dropdowns.
-- **Never require pointer precision.** Touch targets are finger-sized. Assume
-  the user is not looking closely.
-- **Never stop the music to change something.**
-- Two things genuinely cannot be reproduced here: physical pads and real knobs.
-  Do not pretend otherwise; compensate with directness everywhere else.
+This is a standalone instrument — a groovebox that lives entirely on the
+iPad. No external hardware required, no companion device to sync with.
 
 ---
 
@@ -81,89 +26,70 @@ runs.
 
 A proposed feature must serve one of these or it waits.
 
-**1. Grid immediacy.** Every step visible and touchable. One surface. No modes
-you can get lost in.
+1. **One surface, one grammar.** Every edit is *hold the thing, then act on
+   it*. No persistent modes, no panels, no dialogs. The same gesture means the
+   same thing in every view.
+2. **Pitched sample instruments.** A sample loaded as a voice played across
+   pitch on the grid — different notes of the same hi-hat, higher rows higher.
+3. **Polymeter.** Clips of any length; rows within a clip of their own length.
+4. **Sections and the arranger.** Clips grouped by colour into sections,
+   launched and chained, then recorded or placed into a linear arrangement.
 
-**2. Pitched sample instruments.** A sample loaded as a playable voice across
-the keyboard, not just a one-shot in a drum slot. Different notes of the same
-sampled hi-hat is a first-class use case, not an edge case.
+## Design laws
 
-**3. Per-track pattern lengths.** A 16-step kick against a 7-step hat. Polymeter
-is native on the Deluge, impossible on the SP-404, and cheap in software.
+Short form. Full reasoning in `DESIGN.md`.
 
-**4. The arranger.** Sections that can be launched, chained, and built into a
-linear song, with a direct path from jamming to arrangement. This is the layer
-that turns loops into music, and the hardest thing to find anywhere else. Treat
-it as a headline feature, not a final step.
-
----
-
-## Instrument model
-
-Two types, mirroring the Deluge's kit/synth split.
-
-**Kit** — a set of pads, one sample each, unpitched. Step grid: X is time, Y is
-pad. Drums and one-shots.
-
-**Instrument** — a single sample mapped chromatically. Note grid: X is time, Y
-is pitch. Pitch via `AudioBufferSourceNode.playbackRate` (varispeed: pitch and
-duration move together — this is the classic sampler behaviour and is the
-intended sound, not a limitation to engineer around).
-
-Both types, per voice:
-- amplitude envelope (attack / decay / sustain / release) via `GainNode`
-- low-pass filter, cutoff + resonance, via `BiquadFilterNode`
-- sample start offset, loop points, reverse
-
-Roughly forty lines of Web Audio, and the difference between a drum machine and
-an instrument. In scope.
+- If a feature needs a panel, a dialog, or its own screen, the design is wrong.
+- **Rulers move things in time and space. Knobs change what things are.**
+- Zoom is a gesture, never a setting.
+- Nothing asks "are you sure". Everything is undoable.
+- Never stop the music to change something.
+- Touch is the primary input. Use Pointer Events, not mouse events. Every
+  interaction must be verified with a finger, not a trackpad.
 
 ---
 
 ## Non-goals
 
-Stated explicitly so they don't creep in:
+- **Not a synthesiser.** No oscillators, FM, or wavetables. Samples are always
+  the source. Envelopes and filters *shaping* a sample are in scope.
+- **Not a DAW.** No piano roll, mixer screen, plugin hosting, or inspector
+  panels.
+- **No real-time MIDI hardware I/O.** Safari has no Web MIDI and every iOS
+  browser must use WebKit. MIDI *files* are different — see below.
+- **No MIDI, CV, or audio clips.** Kit and instrument clips only.
+- Not multi-user, not cloud-synced, no accounts, not cross-platform, not
+  shipping to anyone.
 
-- **Not a synthesiser.** No oscillators, no FM, no wavetables. Samples are
-  always the sound source. (Envelopes and filters *shaping* a sample are not
-  synthesis and are in scope — see above.)
-- **Not a DAW.** No mixdown automation, no plugin hosting, no destructive audio
-  editing beyond trimming and loop points.
-- **No real-time MIDI hardware I/O.** Narrower than it sounds — see below.
-- **Not multi-user, not cloud-synced, no accounts.**
-- **Not cross-platform.** One target: this iPad, Safari, installed to the home
-  screen. Do not add compatibility code for other browsers.
-- **Not shipping to anyone.** This is an instrument for one person to play.
+## MIDI — two different things
 
----
-
-## MIDI — two different things, don't conflate them
-
-**Web MIDI API** — real-time communication with physical MIDI hardware. Not
-supported in Safari or on iOS, and every iOS browser must use WebKit, so there
-is no browser-side workaround. Out of scope permanently, unless the project ever
-ports to native Swift (where CoreMIDI makes it trivial).
-
-**MIDI files (`.mid`)** — a byte format in a file. Parsing and writing one is
-ordinary JavaScript with zero platform dependencies. **In scope and planned.**
-
-- **Import**: load a `.mid`, populate a pitched Instrument track with its notes.
-  Lets ideas written elsewhere come in.
-- **Export**: write patterns or the full arrangement out as `.mid`.
-
-A minimal parser/writer is a few hundred lines, vendored as a single ES module.
-No npm, no build step.
-
----
+**Web MIDI API** (real-time hardware): out of scope permanently.
+**MIDI files (`.mid`)**: ordinary byte parsing. **In scope, planned** — import
+into instrument clips, export clips or the arrangement. Vendored as one ES
+module, no npm.
 
 ## Constraints
 
-- **iPad only.** No Mac, no laptop, no local compiler.
-- **No money.** Every tool must be free. No paid services, no API keys.
-- **No build step.** Plain ES modules loaded natively. No npm, no bundler, no
-  transpiler, no framework. Deliberate: keeps the project editable from
-  github.dev on a tablet and debuggable in Safari without source maps.
-- **GitHub Pages**, HTTPS, installed as a PWA.
+- iPad only. No Mac, no laptop, no compiler.
+- No money. Every tool free.
+- **No build step.** Plain ES modules. No npm, bundler, transpiler, or
+  framework.
+- GitHub Pages, HTTPS, installed as a PWA, landscape only.
+
+---
+
+## Git workflow
+
+Solo project, no collaborators, no CI. **Commit and push directly to `main`.**
+Do not create a feature branch or open a pull request unless explicitly asked.
+GitHub Pages deploys from `main`, so the loop is: push → Pages redeploys → the
+user reloads on the iPad.
+
+Claude Code's default is to create `claude/*` branches. Override that: at the
+start of a session, `git checkout main`. If you find yourself on a `claude/*`
+branch mid-session, switch back.
+
+When changing a file, **output the whole file**, not a diff.
 
 ---
 
@@ -173,49 +99,57 @@ No npm, no build step.
 index.html
 manifest.json
 css/style.css
-js/clock.js        timing spine — lookahead scheduler
-js/audio.js        AudioContext, sample loading, voice allocation
-js/instrument.js   kit and pitched-instrument playback
-js/pattern.js      data model — tracks, clips, sections, arrangement
-js/grid.js         the grid surface: render, hit-testing, zoom
-js/ui.js           transport and overlays
-js/midifile.js     .mid import/export (vendored)
+
+js/clock.js        lookahead scheduler + tick↔time map
+js/transport.js    song position, launch quantization, which clips play
+js/audio.js        AudioContext, sample loading and decoding
+js/voice.js        kit and instrument voices: pitch, envelope, filter
+js/model.js        Song/Track/Clip data; ALL edits go through here
+js/history.js      undo/redo (snapshots of the model)
+js/store.js        IndexedDB persistence (song JSON + sample blobs)
+js/input.js        pointer tracking, holds, combos — the grammar
+js/views/clip.js   clip view (kit + instrument)
+js/views/song.js   song view
+js/views/arranger.js
+js/ui/grid.js      renders the 16×8 grid + sidebar from cell descriptors
+js/ui/ruler.js     time ruler + row ruler
+js/ui/knobs.js     context knobs, gold knobs, readout
 js/main.js         wiring
-samples/
 ```
 
-Small files, one responsibility each. When changing a file, **output the whole
-file** rather than a diff — it is being merged on a tablet.
+Views produce *cell descriptors* (hue, brightness, state); `grid.js` renders
+them. `input.js` produces gestures; the active view handles them. Views never
+touch audio directly; they call the model, and the transport reads the model.
 
 ---
 
 ## Timing rules — non-negotiable
 
-- **Never use `setInterval` or `setTimeout` to trigger a musical event.** They
-  drift and WebKit throttles them.
-- **The lookahead scheduler is the only correct pattern.** A sloppy timer wakes
-  every ~25ms, looks ~100ms ahead, books events against `ctx.currentTime`, which
-  is sample-accurate. Implemented in `clock.js`.
-- **Audio is scheduled in the future; visuals render in the present.** Never
-  drive the UI from the audio scheduler. The clock exposes a visual queue; a
-  `requestAnimationFrame` loop reads it.
-- **Watch `clock.worstMargin`** — how far ahead events are being booked. Should
-  hold near 70–100ms. Negative means a beat was overdue when the scheduler
-  reached it.
+- **Never trigger a musical event from `setInterval` or `setTimeout`.**
+- **The lookahead scheduler is the only correct pattern.** A timer wakes every
+  ~25ms, looks ~100ms ahead, books events against `ctx.currentTime`.
+- **Audio is scheduled in the future; visuals render in the present.**
+  Playheads come from `requestAnimationFrame` reading the time map, never from
+  the scheduler.
+- **Watch `clock.worstMargin`.** Measured steady-state on the target iPad:
+  ~50ms. Must stay positive under load.
+- Audition and keyboard pads are the one exception: they play immediately on
+  touch-down.
 
----
+**Milestone 3 changes the clock's API** (step-based → tick-window-based, 96
+PPQN). The rule "the clock is settled, don't refactor it" is lifted for that
+milestone only. Every invariant above still holds. See `DESIGN.md` Part 6.
 
 ## iOS specifics
 
-Four things that will look like bugs and are not:
-
-1. `AudioContext` starts suspended and can only be resumed inside a real user
-   gesture. No sound before the user taps something.
-2. The ringer/silent switch can mute Web Audio. Mitigate with
-   `navigator.audioSession.type = 'playback'` where available.
-3. Audio suspends on lock and app-switch. Handle `visibilitychange`, resume.
-4. Safari can evict stored data from sites not opened recently. Call
-   `navigator.storage.persist()`. Samples live in IndexedDB.
+1. `AudioContext` starts suspended; resume only inside a real tap handler.
+2. Ringer switch can mute Web Audio: set `navigator.audioSession.type =
+   'playback'` where available.
+3. Audio suspends on lock/app-switch: on `visibilitychange` → hidden, stop the
+   transport cleanly; on return, resume the context.
+4. Safari can evict storage: call `navigator.storage.persist()`.
+5. No haptics in Safari. All feedback is visual or audible.
+6. Keep controls out of the bottom ~20pt (home-indicator edge swipes).
 
 ---
 
@@ -223,84 +157,76 @@ Four things that will look like bugs and are not:
 
 ```
 Song
-  bpm, swing
-  tracks[]           8 visible, scrollable beyond
-    type             'kit' | 'instrument'
-    sampleId(s)
-    voice            envelope, filter, start offset, loop, reverse
-    clips[]          named step/note snapshots for this track
-      steps[]        Step or null
-      length         INDEPENDENT per clip — the polymeter feature
-  sections[]         launchable groups of clips (the jam layer)
-  arrangement[]      ordered section references over time (the song layer)
+  id, name, bpm, swing
+  scale        { root, mode, enabled }       shared by all instrument clips
+  sections[]   { repeats }                    index = section colour
+  tracks[]
 
-Step
-  pitch (instrument only), velocity, probability, microtiming offset
+Track
+  id, type: 'kit' | 'instrument', name, hue
+  kit:         drums[] { id, sampleId, name, hue, voice, mute }
+  instrument:  sampleId, rootNote, voice
+  clips[]
+  activeClipId                                one clip per track plays
+  arrangement[] { startTick, lengthTicks, clipId | uniqueClip }
+
+Clip
+  id, name?, section (0–11), lengthTicks, launch: 'infinite' | 'once' | 'fill'
+  rows         { [rowKey]: { lengthTicks?, mute } }
+               rowKey = drum id (kit) or MIDI pitch (instrument)
+  notes[]      { row, tick, length, velocity, probability, iterance, repeats }
+
+Voice          { volume, pan, attack, decay, sustain, release,
+                 cutoff, resonance, start, mode: once|cut|loop, reverse }
 ```
 
-Plain JSON, serializable. Save state is one object in IndexedDB; samples stored
-separately as blobs, referenced by id.
+Plain JSON. Sections are a colour index on each clip, not a container. Notes
+store absolute pitch; which rows are visible depends on scale mode. Song JSON
+and sample blobs live separately in IndexedDB.
 
 ---
 
 ## Roadmap
 
-Each milestone is done when **a real musical idea has been made with it**, not
-when the code works. This is a gate, not a motto.
+Each milestone is done when **a real musical idea has been made with it**,
+not when the code works.
 
-1. **Clock** — rock-solid metronome, verified under load. ← current
-2. **Kit track** — 8 pads, tap steps, load your own samples from Files.
-3. **Persistence** — IndexedDB save/load. Early, so nothing is ever lost.
-4. **Pitched instrument** — chromatic sample playback, envelope, filter.
-5. **Zoom + per-track lengths** — the two Deluge mechanics that matter most.
-6. **Clips and sections** — the jam layer.
-7. **Arranger** — the song layer.
-8. **MIDI file import/export.**
-9. **Refinement** — swing, velocity, probability, microtiming, trimming.
+1. ~~**Clock**~~ — done. Margin ~50ms, stable under load.
+2. ~~**Kit prototype**~~ — done. Flat 8-pad grid, samples from Files.
+3. **Foundation.** Tick transport (96 PPQN), the data model above, one
+   mutation layer with undo, IndexedDB persistence. Rebuild the kit clip on
+   it. No new features — parity, plus nothing is ever lost. ← next
+4. **Instrument clips.** Pitched sample, Y = pitch, scale mode by default,
+   audition column as keyboard, note length, root note, envelope and filter on
+   the gold knobs. Minimal controls. *This is the milestone where it should
+   start to click.*
+5. **The surface.** Final layout, rulers (scroll and zoom), context knobs and
+   readout, the full hold grammar in `input.js`.
+6. **Polymeter.** Clip length, row length, multiply, rotate.
+7. **Song view.** Clip rows, launch and arm, one clip per track, sections,
+   repeat counts, clone and move.
+8. **Arranger.** Instances, linked and unique, record performance from song
+   view.
+9. **Keyboard view** and live recording.
+10. **Velocity and automation views**, probability and iterance, MIDI file
+    import/export.
+11. **Refinement.**
+
+Acceptance test for the whole app: the golden path in `DESIGN.md` Part 5.
 
 ---
 
 ## Working agreements
 
-- Ship something playable at every stage. A half-finished sequencer that gets
-  jammed on nightly beats a complete one that sits unplayed.
-- Prefer boring, readable code. The author is a designer with light JS
-  experience, not a software engineer — clarity beats cleverness. Comment *why*,
-  not *what*.
+- Ship something playable at every stage.
+- Prefer boring, readable code. The author is a designer with HTML/CSS and
+  light JS experience — clarity beats cleverness. Comment *why*, not *what*.
 - No new dependencies without discussion. Default answer is no.
-- Feature ideas mid-milestone go to GitHub Issues, not into the current branch.
+- Feature ideas mid-milestone go to GitHub Issues, not the current branch.
 - Check every proposal against the four pillars and the design laws.
-
----
-
-## Open questions
-
-- Can the iPad send audio *into* the SP-404 over USB-C so the 404's FX process
-  the app's output? Untested, potentially significant, costs nothing to try.
-- Does `navigator.audioSession` actually defeat the ringer switch on this
-  device? Pending the clock test.
-- How should zoom be expressed on a touchscreen — pinch, or a two-finger
-  modifier? Prototype before committing.
-
----
+- When `DESIGN.md` and a request conflict, raise it rather than guessing.
 
 ## Status
 
-Repo live, Pages deploying, installed to home screen. Clock implemented and
-under test.
-
-## Git workflow
-
-Solo project, no collaborators, no CI. Commit and push directly to
-main — do not create a feature branch or open a pull request unless
-I explicitly ask for one. GitHub Pages deploys straight from main, so
-this is the entire loop: you push, Pages redeploys, I reload on the
-iPad.
-
-  ## Critical: branch enforcement
-
-  Claude Code's default is to create claude/* branches. Override that:
-  1. Immediately check out main: `git checkout main`
-  2. All commits go directly to main
-  3. If you find yourself on a claude/* branch mid-session, switch back
-  4. Do NOT create feature branches unless explicitly asked
+Milestones 1–2 complete. Design research done (`DESIGN.md`). Next: milestone
+3, foundation.
