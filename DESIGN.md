@@ -342,10 +342,19 @@ locked to tempo. Uses the stretch engine (Part 6).
 
 Same as kit, except:
 
-- **Y is pitch.** Scale mode is on by default: rows are scale degrees, so more
-  useful notes fit on screen and wrong notes are hard to hit. SCALE toggles
-  chromatic. Shift+SCALE cycles modes (major, minor, dorian…). Hold SCALE and
-  tap an audition pad to set the root. All clips share one scale (Deluge rule).
+- **Y is pitch.** Scale mode is on by default (C major for a new song): rows
+  are scale degrees, so more useful notes fit on screen and wrong notes are
+  hard to hit. SCALE toggles chromatic. All clips share one scale (Deluge
+  rule). Three separate actions, as on the original Deluge:
+  - **Shift+SCALE cycles the mode** (the seven diatonic modes) and *moves*
+    existing notes to the same scale degree — major → minor turns E into E♭.
+  - **Hold SCALE + tap an audition pad sets the root** and *does not move*
+    notes. It relabels the key; notes now outside it show as dark extra
+    rows. This is for correcting the key, not changing it.
+  - **Transpose** (E3, see below) moves every note in every scale-mode clip,
+    and the root with it. This is how the key actually changes.
+- **Later (with MIDI import):** when scale mode is switched on, guess the
+  scale and root from the notes already present, as the Deluge does.
 - **The audition column is a keyboard.** It plays that row's pitch.
 - **Note length is real.** Hold and tap right to extend. CUT, LOOP and
   STRETCH samples honour length; ONCE ignores it.
@@ -353,8 +362,11 @@ Same as kit, except:
   varispeed, the classic sampler sound, where higher notes also play shorter.
   An optional per-track setting *unlinks pitch from speed*, so every note
   keeps the sample's original duration at any pitch (via the stretch engine).
-  Each track has a root note (the pitch the sample was recorded at, default
-  C3/60), adjustable on the PITCH gold knob.
+  Each track has a *sample root* (the pitch the sample was recorded at,
+  default C3/60), adjustable on the PITCH gold knob. This is not the song's
+  key. It's rarely touched — for unpitched sounds like hi-hats it only
+  decides which row plays the sample at its original speed. (The Deluge
+  detects it automatically; that's a possible later addition.)
 - **E3 with nothing held transposes** the clip (octave; with shift, semitone).
 
 ### 4.3 Clip view — audio
