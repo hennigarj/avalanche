@@ -1,38 +1,38 @@
-// ui.js — the grid surface: rendering and touch input.
+// ui/grid.js — draws the grid and reports touches.
 //
-// This file draws the grid and turns touches into intentions
-// ("toggle this step", "audition this pad", "load a file into this pad").
-// It never touches audio or the clock directly — main.js decides what
-// those intentions mean.
+// Knows nothing about songs, notes or sound. A view hands it descriptors —
+// for each row, a label and a list of cells saying what to show — and it
+// makes the screen match, touching only what changed. Touches go back out
+// as intentions: "cell pressed", "audition pressed", "file chosen".
+//
+// Descriptors:
+//   row   { label: { name, hue, loaded, busy }, cells: [cell, …] }
+//   cell  { hue, state: 'off' | 'on' | 'beyond', beat, playhead }
+//
+// 'beyond' means past the end of the row's loop: shown dark, with no hue.
 
 // How long a label must be held before it arms for loading.
 const HOLD_MS = 450;
 // How long an armed label waits for the tap that opens Files.
 const ARMED_MS = 4000;
 
-// Colour as memory: each pad keeps its colour everywhere it appears.
-const PAD_COLOURS = [
-  '#ff5a3c', '#ff9a3c', '#ffd23c', '#7ddc4a',
-  '#3cd6c4', '#3c9dff', '#9a6bff', '#ff5ab4',
-];
+// Hue (degrees) → colour. The one place the palette is decided, so it can
+// be tuned without touching anything else.
+export function hueColour(hue) {
+  return `hsl(${hue}, 100%, 62%)`;
+}
 
-// handlers: { onToggle(pad, step), onAudition(pad), onLoad(pad, file) }
-export function createGrid(container, kit, handlers) {
-  const cells = [];     // cells[pad][step]
-  const names = [];     // the text element inside each label
-  const labels = [];
+// handlers: { onCellDown(row, col), onAudition(row), onFile(row, file) }
+export function createGrid(container, rowCount, colCount, handlers) {
+  const rows = [];
 
-  kit.tracks.forEach((track, pad) => {
-    const colour = PAD_COLOURS[pad % PAD_COLOURS.length];
-
-    // --- Pad label: press to hear, hold to arm, then tap to load.
+  for (let r = 0; r < rowCount; r++) {
+    // --- Row label: press to hear, hold to arm, then tap to load.
     const label = document.createElement('div');
     label.className = 'label empty';
-    label.style.setProperty('--pad', colour);
 
     const name = document.createElement('span');
     name.className = 'name';
-    name.textContent = track.name;
     const hint = document.createElement('span');
     hint.className = 'hint';
     hint.textContent = 'hold to load';
@@ -49,74 +49,85 @@ export function createGrid(container, kit, handlers) {
       const file = input.files[0];
       // Clear it so choosing the same file again still fires 'change'.
       input.value = '';
-      if (file) handlers.onLoad(pad, file);
+      if (file) handlers.onFile(r, file);
     });
     label.append(input);
 
-    attachLoadGesture(label, hint, input, () => handlers.onAudition(pad));
-
+    attachLoadGesture(label, hint, input, () => handlers.onAudition(r));
     container.append(label);
-    labels.push(label);
-    names.push(name);
 
-    // --- The 16 steps for this pad.
-    const row = [];
-    for (let step = 0; step < track.steps.length; step++) {
+    // --- The cells for this row.
+    const cells = [];
+    for (let c = 0; c < colCount; c++) {
       const cell = document.createElement('div');
-      cell.className = 'cell' + (step % 4 === 0 ? ' beat' : '');
-      cell.style.setProperty('--pad', colour);
-      cell.dataset.pad = pad;
-      cell.dataset.step = step;
+      cell.className = 'cell';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
       container.append(cell);
-      row.push(cell);
+      cells.push(cell);
     }
-    cells.push(row);
-  });
 
-  // Steps toggle on touch-down, not on release — it should feel like
-  // hitting a pad. Each finger gets its own pointerdown, so several
-  // steps can be toggled at once.
+    rows.push({ label, name, labelHue: null, cells, cellHues: [] });
+  }
+
+  // Cells act on touch-down, not on release — it should feel like hitting
+  // a pad. Each finger gets its own pointerdown, so several cells can be
+  // pressed at once.
   container.addEventListener('pointerdown', (e) => {
     const cell = e.target.closest('.cell');
     if (!cell) return;
-    const pad = +cell.dataset.pad;
-    const step = +cell.dataset.step;
-    const on = handlers.onToggle(pad, step);
-    cell.classList.toggle('on', on);
+    handlers.onCellDown(+cell.dataset.row, +cell.dataset.col);
   });
 
   // Long-press on iOS otherwise brings up the copy/share callout.
   container.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // --- Playhead
-  let lit = -1;
-  function setPlayhead(step) {
-    if (step === lit) return;
-    if (lit >= 0) for (const row of cells) row[lit].classList.remove('playhead');
-    if (step >= 0) for (const row of cells) row[step].classList.add('playhead');
-    lit = step;
+  // Make the screen match the descriptors. Called every frame, so it only
+  // writes to the page where something actually changed.
+  function update(descriptors) {
+    descriptors.forEach((d, r) => {
+      const row = rows[r];
+      if (!row) return;
+
+      if (row.labelHue !== d.label.hue) {
+        row.labelHue = d.label.hue;
+        row.label.style.setProperty('--pad', hueColour(d.label.hue));
+      }
+      if (row.name.textContent !== d.label.name) row.name.textContent = d.label.name;
+      row.label.classList.toggle('empty', !d.label.loaded);
+      row.label.classList.toggle('busy', d.label.busy);
+
+      d.cells.forEach((c, i) => {
+        const cell = row.cells[i];
+        if (!cell) return;
+        if (row.cellHues[i] !== c.hue) {
+          row.cellHues[i] = c.hue;
+          cell.style.setProperty('--pad', hueColour(c.hue));
+        }
+        const cls = cellClass(c);
+        if (cell.className !== cls) cell.className = cls;
+      });
+    });
   }
 
-  function setPadName(pad, text, loaded) {
-    names[pad].textContent = text;
-    labels[pad].classList.toggle('empty', !loaded);
-  }
-
-  function setPadBusy(pad, busy) {
-    labels[pad].classList.toggle('busy', busy);
-  }
-
-  return {
-    setPlayhead,
-    clearPlayhead: () => setPlayhead(-1),
-    setPadName,
-    setPadBusy,
-  };
+  return { update };
 }
 
-// Press / hold / tap behaviour for a pad label.
+function cellClass(c) {
+  let cls = 'cell';
+  if (c.state === 'beyond') {
+    cls += ' beyond';
+  } else {
+    if (c.beat) cls += ' beat';
+    if (c.state === 'on') cls += ' on';
+  }
+  if (c.playhead) cls += ' playhead';
+  return cls;
+}
+
+// Press / hold / tap behaviour for a row label.
 //
-//   press            → audition the pad
+//   press            → audition the row
 //   hold ~half a sec → the label arms: fills with its colour, "tap to load"
 //   tap while armed  → Files opens
 //
