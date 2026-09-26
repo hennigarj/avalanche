@@ -142,6 +142,7 @@ js/audio.js        AudioContext, sample loading and decoding
 js/voice.js        kit and instrument voices: pitch, envelope, filter
 js/stretch.js      time-stretch engine: render + cache stretched buffers
 js/model.js        Song/Track/Clip data; ALL edits go through here
+js/scale.js        keys, modes, note names (pure music theory)
 js/history.js      undo/redo (snapshots of the model)
 js/store.js        IndexedDB persistence (song JSON + sample blobs)
 js/input.js        pointer tracking, holds, combos — the grammar
@@ -151,6 +152,8 @@ js/views/arranger.js
 js/ui/grid.js      renders the 16×8 grid + sidebar from cell descriptors
 js/ui/ruler.js     time ruler + row ruler
 js/ui/knobs.js     context knobs, gold knobs, readout
+js/ui/controls.js  TEMPORARY instrument controls; replaced in milestone 7
+js/ui/tracks.js    TEMPORARY track strip; replaced by song view (milestone 9)
 js/main.js         wiring
 js/vendor/         approved single-file libraries (see Constraints)
 ```
