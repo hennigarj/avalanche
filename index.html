@@ -16,6 +16,8 @@
 <div id="grid"></div>
 
 <div class="transport">
+  <button id="shift">Shift</button>
+  <button id="back">Back</button>
   <button id="toggle">Start</button>
   <button id="metro">Click off</button>
 </div>
@@ -23,12 +25,34 @@
 <label>Tempo — <span id="bpmLabel">120</span> BPM</label>
 <input type="range" id="bpm" min="40" max="200" value="120">
 
+<!-- TEMPORARY — milestone 3 polymeter check. Remove at milestone 7. -->
+<div class="debug">
+  <button id="debugRow">Temp debug · row 3</button>
+</div>
+
 <div id="diag">
   <div><span>Audio context</span><b id="dState">—</b></div>
   <div><span>Worst margin</span><b id="dMargin">—</b></div>
   <div><span>Running for</span><b id="dTime">—</b></div>
+  <div><span>Storage</span><b id="dStorage">—</b></div>
+  <div><span>Last save</span><b id="dSaved">—</b></div>
+  <div id="dErrorRow" hidden><span>Error</span><b id="dError" class="bad"></b></div>
 </div>
 
+<script>
+  // There's no console on the iPad, so show the latest uncaught error on
+  // screen. A plain script (not a module) so it still runs if a module
+  // fails to load.
+  (function () {
+    function show(message) {
+      var row = document.getElementById('dErrorRow');
+      document.getElementById('dError').textContent = message;
+      row.hidden = false;
+    }
+    window.addEventListener('error', function (e) { show(e.message || 'Error'); });
+    window.addEventListener('unhandledrejection', function (e) { show(String(e.reason)); });
+  })();
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
