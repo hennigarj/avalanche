@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The page itself must never zoom (DESIGN.md 3.7): only the app zooms,
+     by its own gestures. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Avalanche</title>
 <!-- KEEP your existing manifest link here if you already added one:
@@ -66,6 +68,15 @@
   <div id="dErrorRow" hidden><span>Error</span><b id="dError" class="bad"></b></div>
 </div>
 
+<script>
+  // Stop Safari zooming the page. Safari pinch-zooms through its own
+  // 'gesture' events and doesn't always honour user-scalable=no, so
+  // cancel them outright. Pads and buttons run on pointer events, which
+  // this doesn't touch. A plain script, so it works even if a module
+  // fails to load.
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturechange', function (e) { e.preventDefault(); }, { passive: false });
+</script>
 <script>
   // There's no console on the iPad, so show the latest uncaught error on
   // screen. A plain script (not a module) so it still runs if a module

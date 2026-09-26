@@ -285,4 +285,16 @@ Acceptance test for the whole app: the golden path in `DESIGN.md` Part 5.
 
 ## Status
 
-Milestones 1–3 complete. Next: milestone 4, instrument clips.
+**Milestone 4 (instrument clips): built and merged; awaiting the iPad test.**
+Not done until a real musical idea has been made with it.
+- Tested, in headless Chromium only (simulated touches, recorded audio):
+  note grammar, scale/mode/root/transpose, undo, persistence, no clicks at
+  note ends, worstMargin positive with kit + instrument busy.
+- Untested on the iPad: everything by finger, audition latency, worstMargin
+  on the device, and the page-zoom fix (Safari-only events; can't test here).
+- Gaps: kit rows still overlap (DESIGN 6 says mono per row); the page
+  scrolls, as the controls don't fit one screen until milestone 7.
+- Next step: iPad pass on milestone 4, make a musical idea, fix what it
+  finds, then milestone 5 (MIDI file import).
+- Open questions: does delete-on-release feel laggy (DESIGN 8.1)? Is the
+  master soft clipper OK when pushed? Kit rows mono now, or at milestone 7?

@@ -18,9 +18,19 @@
   box-sizing: inherit;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;   /* no copy/share bubble on long-press */
+  -webkit-user-select: none; user-select: none;   /* no text selection, no magnifier */
 }
 /* `hidden` must win over any display rule below. */
 [hidden] { display: none !important; }
+
+/* The page never zooms: no pinch, no double-tap. It may only scroll up
+   and down, because the controls below the grid (tempo, sample root) are
+   taller than the screen until milestone 7's layout. Everything you play
+   — the strip, the grid, the transport, the controls — is touch-action:
+   none, so on those not even scrolling can steal a touch. */
+html, body {
+  touch-action: pan-y;
+}
 
 body {
   margin: 0; padding: 24px;
@@ -28,8 +38,6 @@ body {
   padding-bottom: 48px;
   background: var(--bg); color: var(--fg);
   font: 15px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
-  -webkit-user-select: none; user-select: none;
-  touch-action: manipulation;
 }
 
 /* --- Track strip (TEMPORARY: a stand-in for song view) */
