@@ -53,13 +53,18 @@ h1 { font-size: 13px; font-weight: 600; letter-spacing: .12em;
 .label.pressed { background: #2e2e34; }
 .label.armed   { background: var(--pad); }
 .label.armed .name, .label.armed .hint { color: var(--bg); }
+.label.armed .hint { display: block; }
 .label.busy    { opacity: .5; }
 
-/* Hidden, but not display:none — iOS won't open a display:none input. */
+/* The real file input: invisible, covering the whole label, and ignoring
+   touches — until the label is armed. Then the next tap lands on it
+   directly, which is the only way iOS will open Files. */
 .label .file {
-  position: absolute; width: 1px; height: 1px;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
   opacity: 0; pointer-events: none;
 }
+.label.armed .file { pointer-events: auto; }
 
 .cell {
   aspect-ratio: 1; border-radius: 6px;
