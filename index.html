@@ -167,10 +167,20 @@ document.getElementById('bpm').addEventListener('input', (e) => {
 
 // iOS gotcha #3: audio suspends when you lock or switch apps.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && clock.isRunning) {
+  if (document.visibilityState === 'hidden') {
+    // iOS throttles timers in the background. Stop cleanly instead of
+    // letting the scheduler fall behind and burst on return.
+    if (clock.isRunning) {
+      clock.stop();
+      toggle.textContent = 'Start';
+      toggle.classList.remove('running');
+      if (lit >= 0) { cells[lit].classList.remove('lit'); lit = -1; }
+    }
+  } else {
     ctx.resume();
   }
 });
+
 
 // --- Diagnostics
 const dState = document.getElementById('dState');

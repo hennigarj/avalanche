@@ -1,16 +1,13 @@
 // clock.js — the timing spine.
 //
-// The whole idea: JS timers (setTimeout/setInterval) are sloppy and get
-// throttled. The Web Audio clock (ctx.currentTime) is sample-accurate.
-// So we use a sloppy timer that wakes up often, looks a little way into
-// the future, and books events against the accurate clock ahead of time.
-//
-// Sloppy timer fires every LOOKAHEAD_MS and asks:
-//   "any steps due in the next SCHEDULE_AHEAD seconds?"
-// If yes, it schedules them with exact timestamps and moves on.
+// A sloppy JS timer wakes up often, looks a little way into the future,
+// and books events against ctx.currentTime, which is sample-accurate.
+// Timers drift; the audio clock does not. So the timer never triggers
+// anything — it only decides what to book.
 
 const LOOKAHEAD_MS = 25;      // how often the scheduler wakes up
 const SCHEDULE_AHEAD = 0.1;   // how far ahead we book events (seconds)
+const MAX_LATE = 0.1;         // past this far behind, give up and re-anchor
 
 export class Clock {
   constructor(ctx) {
@@ -21,19 +18,21 @@ export class Clock {
 
     this.isRunning = false;
     this.currentStep = 0;
-    this.nextStepTime = 0;    // when the next step should fire (ctx time)
+    this.nextStepTime = 0;
     this.timerId = null;
 
     // Callback: (stepIndex, time) => void
-    // `time` is an exact ctx.currentTime value in the near future.
-    // Schedule your audio AT that time, don't play it immediately.
+    // `time` is an exact ctx.currentTime value slightly in the future.
+    // Schedule audio AT that time — never play immediately.
     this.onStep = null;
 
-    // Queue of upcoming steps so the UI can light up in sync.
+    // Upcoming steps, so the UI can light up in sync.
     this.visualQueue = [];
 
-    // Diagnostics — the number that tells us if this is working.
+    // Diagnostics. worstMargin is the smallest gap we ever managed
+    // between booking a step and that step sounding.
     this.worstMargin = Infinity;
+    this.resyncCount = 0;
   }
 
   get secondsPerStep() {
@@ -45,7 +44,7 @@ export class Clock {
     this.isRunning = true;
     this.currentStep = 0;
     this.worstMargin = Infinity;
-    // Small offset so the first step isn't scheduled in the past.
+    this.resyncCount = 0;
     this.nextStepTime = this.ctx.currentTime + 0.05;
     this._tick();
   }
@@ -56,15 +55,28 @@ export class Clock {
     this.visualQueue = [];
   }
 
+  // Re-anchor to now. Used when the scheduler has been starved — the app
+  // was backgrounded, or the main thread stalled. Without this, the catch-up
+  // loop below books every missed step at once and they all fire instantly
+  // as a burst.
+  resync() {
+    this.nextStepTime = this.ctx.currentTime + 0.05;
+    this.visualQueue = [];
+    this.worstMargin = Infinity;  // old value describes a stall, not steady state
+    this.resyncCount++;
+  }
+
   _tick() {
     if (!this.isRunning) return;
 
-    // Book every step that falls inside our lookahead window.
-    while (this.nextStepTime < this.ctx.currentTime + SCHEDULE_AHEAD) {
+    // Did we get starved while we weren't running? Bail out rather than
+    // trying to replay the past.
+    if (this.nextStepTime < this.ctx.currentTime - MAX_LATE) {
+      this.resync();
+    }
 
-      // Margin = how far in the future we're booking this step.
-      // Positive is good. Negative means we woke up too late and the
-      // step's moment has already passed — that's a dropped beat.
+    // Book every step falling inside the lookahead window.
+    while (this.nextStepTime < this.ctx.currentTime + SCHEDULE_AHEAD) {
       const margin = this.nextStepTime - this.ctx.currentTime;
       if (margin < this.worstMargin) this.worstMargin = margin;
 
@@ -78,8 +90,8 @@ export class Clock {
     this.timerId = setTimeout(() => this._tick(), LOOKAHEAD_MS);
   }
 
-  // Call from a requestAnimationFrame loop. Returns the step that should
-  // be lit up right now, or null if nothing has changed.
+  // Call from a requestAnimationFrame loop. Returns the step that should be
+  // lit right now, or null if nothing changed.
   stepForDisplay() {
     let step = null;
     while (this.visualQueue.length && this.visualQueue[0].time <= this.ctx.currentTime) {
