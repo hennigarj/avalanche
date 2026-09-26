@@ -19,9 +19,18 @@
 //   loop and check again. Loop wrap needs no special case: the note on
 //   step 1 is simply "the next time round". Rows of different lengths
 //   never interfere, because each uses its own loop length.
+//
+// Note-offs:
+//
+//   A note that honours its length (a CUT or LOOP sample) has to be told
+//   when to stop. That end is booked exactly like a note: we remember the
+//   tick it ends on, and when that tick comes into a window, we book the
+//   release at the time the time map gives for it. So if the tempo moves
+//   while a long note is sounding, it still ends on the right beat.
 
 import { PPQN } from './clock.js';
-import { playSample, playClick } from './audio.js';
+import { playClick } from './audio.js';
+import { playNote, releaseVoice, releaseAll } from './voice.js';
 import { getSong, rowLengthTicks, STEP_TICKS } from './model.js';
 
 const BAR_TICKS = PPQN * 4;   // 4/4, for the metronome's accents
@@ -35,6 +44,10 @@ export class Transport {
     // position is always counted from the tick it was launched on.
     this.playing = new Map();
 
+    // Notes sounding now that still need their release booked:
+    // [{ voice, endTick }].
+    this.held = [];
+
     clock.onWindow = (from, to) => this._fill(from, to);
   }
 
@@ -46,6 +59,7 @@ export class Transport {
   // playing (quantized to the longest clip) arrives with song view.
   start() {
     this.playing.clear();
+    this.held = [];
     for (const track of getSong().tracks) {
       if (track.activeClipId) {
         this.playing.set(track.id, { clipId: track.activeClipId, launchTick: 0 });
@@ -54,8 +68,12 @@ export class Transport {
     this.clock.start();
   }
 
+  // Held notes get their release; notes booked but not started yet are
+  // silenced, so nothing new sounds after Stop.
   stop() {
     this.clock.stop();
+    releaseAll(this.clock.ctx.currentTime);
+    this.held = [];
     this.playing.clear();
   }
 
@@ -78,12 +96,19 @@ export class Transport {
 
   _fill(from, to) {
     for (const track of getSong().tracks) {
-      const p = this.playing.get(track.id);
+      let p = this.playing.get(track.id);
+      // A track added while playing joins in time, exactly where it would
+      // be had it been playing from the start.
+      if (!p && track.activeClipId) {
+        p = { clipId: track.activeClipId, launchTick: 0 };
+        this.playing.set(track.id, p);
+      }
       if (!p) continue;
       const clip = track.clips.find((c) => c.id === p.clipId);
-      if (!clip) continue;
-      if (track.type === 'kit') this._fillKit(track, clip, p.launchTick, from, to);
+      if (clip) this._fillNotes(track, clip, p.launchTick, from, to);
     }
+
+    this._fillReleases(to);
 
     if (this.metronome) {
       eachTime(0, STEP_TICKS, from, to, (tick) => {
@@ -93,22 +118,44 @@ export class Transport {
     }
   }
 
-  _fillKit(track, clip, launchTick, from, to) {
+  _fillNotes(track, clip, launchTick, from, to) {
     for (const note of clip.notes) {
-      const drum = track.drums.find((d) => d.id === note.row);
-      if (!drum || !drum.sampleId || drum.mute) continue;
-      const row = clip.rows[note.row];
-      if (row && row.mute) continue;
+      if (!audible(track, clip, note)) continue;
 
       // Notes past the end of a shortened row are kept, but don't play.
       const loop = rowLengthTicks(clip, note.row);
       if (note.tick >= loop) continue;
+      // Nor can a note ring on past its row's end into its own next lap.
+      const length = Math.min(note.length, loop - note.tick);
 
       eachTime(launchTick + note.tick, loop, from, to, (tick) => {
-        playSample(drum.id, drum.sampleId, this.clock.timeAt(tick));
+        const voice = playNote(track, note.row, this.clock.timeAt(tick));
+        if (voice && voice.sustains) this.held.push({ voice, endTick: tick + length });
       });
     }
   }
+
+  // Book the release of every held note whose end falls before this
+  // window's end. Checked after the notes, so a note shorter than one
+  // window gets its release in the same pass.
+  _fillReleases(to) {
+    this.held = this.held.filter(({ voice, endTick }) => {
+      if (endTick >= to) return true;
+      releaseVoice(voice, this.clock.timeAt(endTick));
+      return false;
+    });
+  }
+}
+
+// Should this note make a sound at all?
+function audible(track, clip, note) {
+  const row = clip.rows[note.row];
+  if (row && row.mute) return false;
+  if (track.type === 'kit') {
+    const drum = track.drums.find((d) => d.id === note.row);
+    return !!drum && !!drum.sampleId && !drum.mute;
+  }
+  return track.type === 'instrument' && !!track.sampleId;
 }
 
 // Something that first happens at tick `first` and comes round every

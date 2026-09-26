@@ -5,6 +5,9 @@
   --cell: #1c1c20;
   --cell-beat: #26262c;
   --cell-beyond: #111114;
+  /* Pitches outside the key (piano black-key logic): darker than --cell. */
+  --cell-out: #131316;
+  --cell-out-beat: #18181c;
   --on: #ff5a3c;
   --accent: #ffd23c;
   box-sizing: border-box;
@@ -16,17 +19,56 @@
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;   /* no copy/share bubble on long-press */
 }
+/* `hidden` must win over any display rule below. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0; padding: 24px;
+  /* iOS: keep controls clear of the home-indicator edge swipe. */
+  padding-bottom: 48px;
   background: var(--bg); color: var(--fg);
   font: 15px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
   -webkit-user-select: none; user-select: none;
   touch-action: manipulation;
 }
-h1 { font-size: 13px; font-weight: 600; letter-spacing: .12em;
-     text-transform: uppercase; color: var(--dim); margin: 0 0 24px; }
 
-/* --- The grid: a label column, then 16 steps. */
+/* --- Track strip (TEMPORARY: a stand-in for song view) */
+.tracks {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 16px;
+  touch-action: none;
+}
+.track {
+  position: relative;
+  display: flex; flex-direction: column; justify-content: center;
+  min-width: 128px; padding: 8px 14px;
+  border-radius: 8px; overflow: hidden;
+  background: var(--cell);
+  border-left: 6px solid var(--pad);
+}
+.track .name {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.track .kind, .track .hint {
+  font-size: 10px; color: var(--dim);
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.track .hint { display: none; }
+.track.empty .hint, .track.armed .hint { display: block; }
+.track.current { background: #34343c; box-shadow: inset 0 0 0 2px var(--pad); }
+.track.pressed { background: #3e3e46; }
+.track.armed   { background: var(--pad); }
+.track.armed * { color: var(--bg); }
+.track.busy    { opacity: .5; }
+
+.tracks .add {
+  padding: 8px 16px; font-size: 13px;
+  background: transparent; color: var(--dim);
+  border: 2px dashed #3a3a42;
+}
+
+/* --- The grid: a label (audition) column, then 16 steps. */
 #grid {
   display: grid;
   grid-template-columns: minmax(96px, 1.6fr) repeat(16, 1fr);
@@ -50,41 +92,57 @@ h1 { font-size: 13px; font-weight: 600; letter-spacing: .12em;
 }
 .label .hint { font-size: 10px; color: var(--dim); display: none; }
 .label.empty .name { color: var(--dim); }
-.label.empty .hint { display: block; }
+.label.empty.loadable .hint { display: block; }
+/* Instrument rows: the key's root faintly tinted; outside the key darker. */
+.label.root    { background: var(--tint); }
+.label.outside { background: var(--cell-out); }
+.label.outside .name { color: var(--dim); }
 .label.pressed { background: #2e2e34; }
 .label.armed   { background: var(--pad); }
 .label.armed .name, .label.armed .hint { color: var(--bg); }
 .label.armed .hint { display: block; }
 .label.busy    { opacity: .5; }
 
-/* The real file input: invisible, covering the whole label, and ignoring
-   touches — until the label is armed. Then the next tap lands on it
-   directly, which is the only way iOS will open Files. */
-.label .file {
+/* The real file input: invisible, covering the whole label (or track
+   button), and ignoring touches — until it's armed. Then the next tap
+   lands on it directly, which is the only way iOS will open Files. */
+.file {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   opacity: 0; pointer-events: none;
 }
-.label.armed .file { pointer-events: auto; }
+.armed > .file { pointer-events: auto; }
 
+/* Cells. Each gets exactly one of these looks (see cellClass in grid.js),
+   so no two rules fight. Colours of the row's hue come from grid.js as
+   --pad (note head), --tail, --tail-hot and --tint. */
 .cell {
   aspect-ratio: 1; border-radius: 6px;
   background: var(--cell);
 }
-.cell.beat { background: var(--cell-beat); }
-.cell.on   { background: var(--pad); }
+.cell.beat          { background: var(--cell-beat); }
+.cell.root          { background: var(--tint); }
+.cell.root.beat     { background: var(--tint-beat); }
+.cell.outside       { background: var(--cell-out); }
+.cell.outside.beat  { background: var(--cell-out-beat); }
+.cell.head          { background: var(--pad); }
+.cell.tail          { background: var(--tail); }
 
 /* Past the end of this row's loop (polymeter): dark, no colour. */
 .cell.beyond { background: var(--cell-beyond); }
 
-/* Playhead: a brighter column. An active step under it flashes white-hot.
+/* Playhead: a brighter column. A note under it flashes white-hot.
    Each row has its own, so rows of different lengths drift apart. */
-.cell.playhead    { background: #3a3a42; }
-.cell.on.playhead { background: #fff; }
+.cell.playhead      { background: #3a3a42; }
+.cell.head.playhead { background: #fff; }
+.cell.tail.playhead { background: var(--tail-hot); }
+
+/* A finger is on it. */
+.cell.held { box-shadow: inset 0 0 0 3px #fff; }
 
 /* --- Transport */
 .transport {
-  display: flex; gap: 12px; margin-bottom: 28px;
+  display: flex; gap: 12px; margin-bottom: 20px;
   /* Holding SHIFT with one finger while tapping BACK with another must
      never be read as a pinch-zoom. */
   touch-action: none;
@@ -103,19 +161,54 @@ button.running { background: var(--on); color: #fff; }
 #shift, #back { min-width: 120px; background: var(--cell-beat); color: var(--fg); }
 #shift.held, #back.pressed { background: var(--fg); color: var(--bg); }
 
+/* --- Instrument controls (TEMPORARY: placeholders until milestone 7) */
+.controls { margin-bottom: 20px; }
+.controls .row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  margin-bottom: 18px;
+  touch-action: none;
+}
+.controls button, .minor button {
+  padding: 14px 18px; min-width: 64px; font-size: 14px;
+  background: var(--cell-beat); color: var(--fg);
+}
+.controls button.pressed, .controls button.held,
+.minor button.pressed { background: var(--fg); color: var(--bg); }
+#scale.on { box-shadow: inset 0 0 0 2px var(--accent); }
+#scale.on.held { box-shadow: none; }
+.readout {
+  min-width: 200px;
+  font-size: 14px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent);
+}
+.controls .gap { flex: 1; }
+
+.knobs {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+}
+.knob span {
+  display: flex; justify-content: space-between;
+  color: var(--dim); font-size: 12px;
+  letter-spacing: .1em; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.knob b { color: var(--fg); font-weight: 500; }
+.knob input[type=range] { margin-bottom: 0; }
+
+/* Sample root: rarely needed, so small and dim. */
+.minor {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 28px;
+  color: var(--dim); font-size: 12px;
+  letter-spacing: .1em; text-transform: uppercase;
+  touch-action: none;
+}
+.minor button { padding: 8px 14px; min-width: 44px; }
+.minor b { color: var(--fg); font-weight: 500; min-width: 3em; text-align: center; }
+
 label { display: block; color: var(--dim); font-size: 12px;
         letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
 input[type=range] { width: 100%; margin-bottom: 28px; }
-
-/* --- TEMPORARY: milestone 3 polymeter check. Remove at milestone 7.
-   Dashed and dim on purpose, so it never looks like part of the design. */
-.debug { margin-bottom: 28px; }
-.debug button {
-  width: 100%; padding: 14px; font-size: 13px;
-  background: transparent; color: var(--dim);
-  border: 2px dashed #3a3a42;
-}
-.debug button.active { color: var(--accent); border-color: var(--accent); }
 
 /* --- Diagnostics */
 #diag { border-top: 1px solid #26262c; padding-top: 18px;

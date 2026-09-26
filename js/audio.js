@@ -1,7 +1,8 @@
-// audio.js — the AudioContext, sample decoding, and playback.
+// audio.js — the AudioContext, sample decoding, and the metronome.
 //
-// Every sound in the app is started here, and always at an explicit time.
-// Sequenced hits get their time from the transport; auditions pass "now".
+// Every sound in the app is started at an explicit time. Notes are played
+// by voice.js; this file owns what they're played through (the context
+// and the master output) and what they're played from (decoded samples).
 
 export const ctx = new AudioContext();
 
@@ -12,25 +13,11 @@ if (navigator.audioSession) {
   try { navigator.audioSession.type = 'playback'; } catch (e) {}
 }
 
-// Headroom so eight drums hitting at once don't distort.
-const master = ctx.createGain();
+// Everything ends up here. Headroom so several tracks hitting at once
+// don't distort.
+export const master = ctx.createGain();
 master.gain.value = 0.5;
 master.connect(ctx.destination);
-
-// One GainNode per drum (keyed by drum id), created the first time that
-// drum makes a sound. It's the drum's own channel: volume now, and the
-// place the filter and envelope will slot in at milestone 4.
-const buses = new Map();
-function busFor(key) {
-  let bus = buses.get(key);
-  if (!bus) {
-    bus = ctx.createGain();
-    bus.gain.value = 0.8;
-    bus.connect(master);
-    buses.set(key, bus);
-  }
-  return bus;
-}
 
 // iOS gotcha #1: the context starts suspended and can only be resumed
 // from inside a real user gesture. Call this from touch handlers.
@@ -41,10 +28,10 @@ export function unlock() {
 // --- Sample cache
 // Samples are decoded once — when loaded from Files, or restored from
 // storage at startup. After that, playback just reuses the decoded
-// AudioBuffer; decoding is far too slow to do per hit.
+// AudioBuffer; decoding is far too slow to do per note.
 //
-// Buffers stay for the whole session, even after a drum's sample is
-// replaced, because undo can bring the old one back.
+// Buffers stay for the whole session, even after a sample is replaced,
+// because undo can bring the old one back.
 const buffers = new Map();
 
 // Decode raw file bytes and cache the result under `id`. Throws if Safari
@@ -59,24 +46,9 @@ export function hasSample(id) {
   return buffers.has(id);
 }
 
-// --- Playback
-// `time` must be a ctx.currentTime value. For sequenced hits it comes from
-// the clock's time map, slightly in the future.
-export function playSample(busKey, sampleId, time) {
-  const buffer = buffers.get(sampleId);
-  if (!buffer) return;
-
-  // Source nodes are single-use by design: make one per hit and let it go.
-  const src = ctx.createBufferSource();
-  src.buffer = buffer;
-  src.connect(busFor(busKey));
-  src.onended = () => src.disconnect();
-  src.start(time);
-}
-
-// Tap-to-hear. The only sound started by a touch rather than the clock.
-export function audition(busKey, sampleId) {
-  playSample(busKey, sampleId, ctx.currentTime);
+// The decoded sample, or undefined if it isn't ready.
+export function getBuffer(id) {
+  return buffers.get(id);
 }
 
 // --- Metronome

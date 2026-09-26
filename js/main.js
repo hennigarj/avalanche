@@ -1,17 +1,25 @@
 // main.js — wiring. Connects the song, storage, the clock and transport,
-// audio, and the clip view. Also owns the buttons around the grid and the
-// startup sequence (restore the saved song and its samples).
+// audio, the clip view, the track strip and the controls. Also owns the
+// buttons around the grid and the startup sequence (restore the saved
+// song and its samples).
 
-import { ctx, unlock, decodeSample, hasSample, audition } from './audio.js';
+import { ctx, unlock, decodeSample, hasSample } from './audio.js';
+import { playNote, releaseVoice, syncChannels } from './voice.js';
 import { Clock } from './clock.js';
 import { Transport } from './transport.js';
 import * as model from './model.js';
-import { STEP_TICKS } from './model.js';
 import * as store from './store.js';
-import { createClipView } from './views/clip.js';
+import { createClipView, baseName } from './views/clip.js';
+import { createTrackStrip } from './ui/tracks.js';
+import { createControls } from './ui/controls.js';
 
 const clock = new Clock(ctx);
 const transport = new Transport(clock);
+
+// Buttons that are held to change what another touch means. Shared by
+// everything that reads a combo (SHIFT + BACK, SHIFT + SCALE, SCALE + an
+// audition pad…).
+const mods = { shift: false, scale: false, scaleUsed: false };
 
 // --- Loading a sample from Files
 // Decode it first (so a file that isn't audio is refused before anything
@@ -32,19 +40,74 @@ async function importSample(file) {
   return id;
 }
 
+// --- Which track and rows are on screen.
+// Not part of the song (so not undone, and not in the song's save): kept
+// in this browser's localStorage, which may be unavailable — then the
+// app just opens on the first track.
+const VIEW_KEY = 'avalanche.view';
+
+function saveViewState() {
+  try { localStorage.setItem(VIEW_KEY, JSON.stringify(view.getState())); } catch (e) {}
+}
+
+function loadViewState() {
+  try { return JSON.parse(localStorage.getItem(VIEW_KEY)); } catch (e) { return null; }
+}
+
 // --- The clip view
 const view = createClipView(document.getElementById('grid'), {
   transport,
-  audition,
+  mods,
+  // Pads played by hand sound now, not on the clock.
+  playNow: (track, rowKey) => playNote(track, rowKey, ctx.currentTime),
+  stopNow: (voice) => releaseVoice(voice, ctx.currentTime),
   importSample,
   hasSample,
+  onViewChange() {
+    saveViewState();
+    refreshControls();
+  },
 });
+
+// --- The track strip (a stand-in for song view)
+const stripMessages = new Map();   // track id → short text shown instead of its name
+
+const strip = createTrackStrip(document.getElementById('tracks'), {
+  onSelect: (trackId) => view.showTrack(trackId),
+
+  onAdd(type) {
+    const id = model.addTrack(type);
+    if (id) view.showTrack(id);
+  },
+
+  async onFile(trackId, file) {
+    view.setBusy(trackId, true);
+    refreshControls();
+    try {
+      const sampleId = await importSample(file);
+      model.setInstrumentSample(trackId, sampleId, baseName(file.name));
+    } catch (err) {
+      // Usually a format Safari can't decode. The old sample stays.
+      console.error('Could not load', file.name, err);
+      stripMessages.set(trackId, "can't read file");
+      // This timer only changes text on screen.
+      setTimeout(() => { stripMessages.delete(trackId); refreshControls(); }, 2000);
+    } finally {
+      view.setBusy(trackId, false);
+      refreshControls();
+    }
+  },
+});
+
+const controls = createControls({ view, mods });
 
 // --- After every change to the song: an edit, undo, redo, or a load.
 model.onChange((reason) => {
-  clock.setBpm(model.getSong().bpm);   // re-anchors cleanly if playing
+  const song = model.getSong();
+  clock.setBpm(song.bpm);    // re-anchors cleanly if playing
+  syncChannels(song);        // filter and volume follow at once
   refreshControls();
-  view.render();                       // show the change now, not next frame
+  view.render();             // show the change now, not next frame
   // A song just read from storage doesn't need writing straight back.
   if (reason !== 'load') store.saveSoon();
 });
@@ -115,14 +178,13 @@ function showTempo(bpm) {
 // BACK undoes; SHIFT + BACK redoes. Both act on touch-down.
 const shiftBtn = document.getElementById('shift');
 const backBtn = document.getElementById('back');
-let shiftHeld = false;
 
 shiftBtn.addEventListener('pointerdown', () => {
-  shiftHeld = true;
+  mods.shift = true;
   shiftBtn.classList.add('held');
 });
 function releaseShift() {
-  shiftHeld = false;
+  mods.shift = false;
   shiftBtn.classList.remove('held');
 }
 // A touch stays attached to the element it started on, so the finger
@@ -132,7 +194,7 @@ shiftBtn.addEventListener('pointercancel', releaseShift);
 
 backBtn.addEventListener('pointerdown', () => {
   backBtn.classList.add('pressed');
-  if (shiftHeld) model.redo();
+  if (mods.shift) model.redo();
   else model.undo();
 });
 function releaseBack() {
@@ -141,38 +203,18 @@ function releaseBack() {
 backBtn.addEventListener('pointerup', releaseBack);
 backBtn.addEventListener('pointercancel', releaseBack);
 
-// ─── TEMPORARY ─────────────────────────────────────────────────────────
-// Polymeter check for milestone 3. Toggles the third row between the
-// clip's 16 steps and 12, so it can be heard cycling against the others
-// (they line up again every 3 bars). It's a normal edit: undoable, saved.
-// Remove at milestone 7, when holding a row's audition pad and dragging
-// the time ruler sets row length for real.
-const DEBUG_ROW = 2;          // third row from the top
-const DEBUG_STEPS = 12;
-const debugBtn = document.getElementById('debugRow');
-
-debugBtn.addEventListener('click', () => {
-  const { track, clip } = model.currentKitClip();
-  const drum = track.drums[DEBUG_ROW];
-  const isShort = model.rowLengthTicks(clip, drum.id) !== clip.lengthTicks;
-  model.setRowLength(track.id, clip.id, drum.id, isShort ? null : DEBUG_STEPS * STEP_TICKS);
-});
-
-function showDebugRow() {
-  const { track, clip } = model.currentKitClip();
-  const steps = model.rowLengthTicks(clip, track.drums[DEBUG_ROW].id) / STEP_TICKS;
-  const clipSteps = clip.lengthTicks / STEP_TICKS;
-  const other = steps === clipSteps ? DEBUG_STEPS : clipSteps;
-  debugBtn.textContent = `Temp debug · row 3 is ${steps} steps · tap for ${other}`;
-  debugBtn.classList.toggle('active', steps !== clipSteps);
-}
-// ─── end TEMPORARY ─────────────────────────────────────────────────────
-
-// Keep the controls around the grid in step with the song (undo can
-// change tempo, for instance).
+// Keep everything around the grid in step with the song (undo can change
+// tempo, remove a track, move a slider…).
 function refreshControls() {
-  showTempo(model.getSong().bpm);
-  showDebugRow();
+  const song = model.getSong();
+  showTempo(song.bpm);
+  strip.update({
+    tracks: song.tracks,
+    currentId: view.currentTrack().id,
+    isBusy: view.isBusy,
+    messages: stripMessages,
+  });
+  controls.refresh();
 }
 
 // --- Backgrounding
@@ -225,6 +267,10 @@ async function boot() {
     console.warn('The newest saved song could not be used; starting a fresh one.');
   }
 
+  // Back to the track and rows that were on screen.
+  view.setState(loadViewState());
+  refreshControls();
+
   await restoreSamples();
   await cleanUpSamples(saved);
 }
@@ -233,6 +279,7 @@ async function boot() {
 async function restoreSamples() {
   const ids = [...model.sampleIdsIn(model.getSong())];
   for (const id of ids) view.setBusy(id, true);
+  refreshControls();
   await Promise.all(ids.map(async (id) => {
     try {
       const record = await store.getSample(id);
@@ -242,6 +289,7 @@ async function restoreSamples() {
       console.error('Could not restore sample', id, err);
     } finally {
       view.setBusy(id, false);
+      refreshControls();
     }
   }));
 }
@@ -265,6 +313,7 @@ async function cleanUpSamples(savedSongs) {
   }
 }
 
+syncChannels(model.getSong());
 refreshControls();
 view.render();
 boot();

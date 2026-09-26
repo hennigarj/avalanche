@@ -11,7 +11,8 @@
 </head>
 <body>
 
-<h1>Kit</h1>
+<!-- TEMPORARY — a stand-in for song view (milestone 9). -->
+<div id="tracks" class="tracks"></div>
 
 <div id="grid"></div>
 
@@ -22,12 +23,38 @@
   <button id="metro">Click off</button>
 </div>
 
+<!-- TEMPORARY — placeholder instrument controls. The rulers and knobs
+     replace them in milestone 7. Only shown for instrument tracks. -->
+<div id="instControls" class="controls" hidden>
+  <div class="row">
+    <button id="rowsDown">▼</button>
+    <button id="rowsUp">▲</button>
+    <button id="scale">Scale</button>
+    <span id="keyName" class="readout"></span>
+    <button id="mode">Mode</button>
+    <span class="gap"></span>
+    <button id="octDown">Oct −</button>
+    <button id="octUp">Oct +</button>
+    <button id="semiDown">Semi −</button>
+    <button id="semiUp">Semi +</button>
+  </div>
+  <div class="knobs">
+    <div class="knob"><span>Attack <b id="attackVal"></b></span><input type="range" id="attack" min="0" max="1000"></div>
+    <div class="knob"><span>Release <b id="releaseVal"></b></span><input type="range" id="release" min="0" max="1000"></div>
+    <div class="knob"><span>Cutoff <b id="cutoffVal"></b></span><input type="range" id="cutoff" min="0" max="1000"></div>
+    <div class="knob"><span>Resonance <b id="resonanceVal"></b></span><input type="range" id="resonance" min="0" max="1000"></div>
+  </div>
+</div>
+
 <label>Tempo — <span id="bpmLabel">120</span> BPM</label>
 <input type="range" id="bpm" min="40" max="200" value="120">
 
-<!-- TEMPORARY — milestone 3 polymeter check. Remove at milestone 7. -->
-<div class="debug">
-  <button id="debugRow">Temp debug · row 3</button>
+<!-- The sample's own pitch. Rarely needed, so kept down here. -->
+<div id="sampleRoot" class="minor" hidden>
+  <span>Sample root</span>
+  <button id="rootDown">−</button>
+  <b id="rootName">C3</b>
+  <button id="rootUp">+</button>
 </div>
 
 <div id="diag">
