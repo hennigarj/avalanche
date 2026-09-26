@@ -5,8 +5,10 @@
 // It never touches audio or the clock directly — main.js decides what
 // those intentions mean.
 
-// How long a label must be held before letting go opens Files.
+// How long a label must be held before it arms for loading.
 const HOLD_MS = 450;
+// How long an armed label waits for the tap that opens Files.
+const ARMED_MS = 4000;
 
 // Colour as memory: each pad keeps its colour everywhere it appears.
 const PAD_COLOURS = [
@@ -23,7 +25,7 @@ export function createGrid(container, kit, handlers) {
   kit.tracks.forEach((track, pad) => {
     const colour = PAD_COLOURS[pad % PAD_COLOURS.length];
 
-    // --- Pad label: press to hear, hold and release to load.
+    // --- Pad label: press to hear, hold to arm, then tap to load.
     const label = document.createElement('div');
     label.className = 'label empty';
     label.style.setProperty('--pad', colour);
@@ -36,11 +38,12 @@ export function createGrid(container, kit, handlers) {
     hint.textContent = 'hold to load';
     label.append(name, hint);
 
-    // One file input per row. Hidden but not display:none, which some
-    // iOS versions refuse to open programmatically.
+    // One file input per row, invisible, lying over the label.
+    // No `accept` filter on purpose: on iOS, accept="audio/*" greys out
+    // .wav files in the Files browser. If a non-audio file is picked it
+    // simply fails to decode and the label says so.
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'audio/*';
     input.className = 'file';
     input.addEventListener('change', () => {
       const file = input.files[0];
@@ -50,10 +53,7 @@ export function createGrid(container, kit, handlers) {
     });
     label.append(input);
 
-    attachHold(label, {
-      press: () => handlers.onAudition(pad),
-      release: (held) => { if (held) input.click(); },
-    });
+    attachLoadGesture(label, hint, input, () => handlers.onAudition(pad));
 
     container.append(label);
     labels.push(label);
@@ -114,42 +114,78 @@ export function createGrid(container, kit, handlers) {
   };
 }
 
-// Press / hold detection for a pad label.
+// Press / hold / tap behaviour for a pad label.
 //
-// The Files picker has to be opened on finger-up, not by a timer while
-// the finger is still down: iOS only lets a page open it in direct
-// response to a touch event, and a timer firing mid-hold doesn't count.
-// The timer below is purely visual — it lights the label to say
-// "let go now and Files will open".
-function attachHold(el, { press, release }) {
-  let pointerId = null;
-  let downAt = 0;
-  let timer = null;
+//   press            → audition the pad
+//   hold ~half a sec → the label arms: fills with its colour, "tap to load"
+//   tap while armed  → Files opens
+//
+// Why hold-then-tap instead of hold-and-release: iOS only opens the Files
+// picker from a genuine tap on the file input itself. A script calling
+// input.click() at the end of a long finger press is silently ignored
+// (it worked with the trackpad because iOS treats that as a mouse click).
+// So arming just lets the invisible file input receive touches, and the
+// next tap lands on it directly — iOS opens Files on its own, no script.
+//
+// The timers here only change what's on screen. They never make a sound.
+function attachLoadGesture(label, hint, input, press) {
+  let holdTimer = null;
+  let armTimer = null;
+  let armed = false;
+  let freshTap = false;   // did a new touch start on the input while armed?
 
-  function reset() {
-    clearTimeout(timer);
-    el.classList.remove('pressed', 'armed');
-    pointerId = null;
+  function arm() {
+    armed = true;
+    freshTap = false;
+    label.classList.add('armed');
+    hint.textContent = 'tap to load';
+    clearTimeout(armTimer);
+    armTimer = setTimeout(disarm, ARMED_MS);
   }
 
-  el.addEventListener('pointerdown', (e) => {
-    if (pointerId !== null) return;   // ignore a second finger on the same label
-    pointerId = e.pointerId;
-    downAt = e.timeStamp;
-    el.classList.add('pressed');
-    timer = setTimeout(() => el.classList.add('armed'), HOLD_MS);
+  function disarm() {
+    armed = false;
+    clearTimeout(armTimer);
+    label.classList.remove('armed');
+    hint.textContent = 'hold to load';
+  }
+
+  label.addEventListener('pointerdown', (e) => {
+    // While armed, the finger is landing on the file input, not the pad.
+    // Let iOS handle that tap natively.
+    if (armed) {
+      freshTap = e.target === input;
+      return;
+    }
+    label.classList.add('pressed');
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(arm, HOLD_MS);
     press();
   });
 
-  el.addEventListener('pointerup', (e) => {
-    if (e.pointerId !== pointerId) return;
-    const held = e.timeStamp - downAt >= HOLD_MS;
-    reset();
-    release(held);
+  // Letting go early (or iOS taking the touch away) just means "that was
+  // a tap". Once armed, the label stays armed after the finger lifts.
+  function release() {
+    clearTimeout(holdTimer);
+    label.classList.remove('pressed');
+  }
+  label.addEventListener('pointerup', release);
+  label.addEventListener('pointercancel', release);
+
+  input.addEventListener('click', (e) => {
+    // Once the label arms, the input is under the still-held finger, so
+    // lifting it can arrive as a click on the input. Ignore that one, so
+    // it's always hold, then tap — the same with a finger or the trackpad.
+    if (!freshTap) {
+      e.preventDefault();
+      return;
+    }
+    // A real tap reached the input and Files is opening: back to normal.
+    disarm();
   });
 
-  // The system took the touch away (e.g. a gesture). Don't open Files.
-  el.addEventListener('pointercancel', (e) => {
-    if (e.pointerId === pointerId) reset();
+  // Touching anything else means "never mind".
+  document.addEventListener('pointerdown', (e) => {
+    if (armed && e.target !== input) disarm();
   });
 }
