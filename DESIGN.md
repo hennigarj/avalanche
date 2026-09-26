@@ -17,17 +17,20 @@ sources. Where it says "we do Y", that is a design decision for touch.
 
 ```
 Song
- ├─ Tracks        one sound source each: a Kit or an Instrument
+ ├─ Tracks        one sound source each: a Kit, an Instrument, or Audio
  │   └─ Clips     looping sequences; many per track; ONE plays at a time
  │       └─ Rows  kit: one drum per row · instrument: one pitch per row
  │           └─ Notes   position, length, velocity, probability, iterance
+ │                (audio clips have no rows or notes: the clip IS the audio)
  ├─ Sections      a colour; every clip has exactly one
  └─ Arrangement   per-track timeline of clip instances
 ```
 
 **Track.** One sound source. A *kit* is many samples, one per row. An
-*instrument* is one sample played at different pitches. A track owns many
-clips.
+*instrument* is one sample played at different pitches. An *audio* track
+plays one long sample — a loop, a phrase, a stem — and **audio clips are
+always time-stretched to stay in sync with the song**: change the tempo and
+the audio follows, without changing pitch. A track owns many clips.
 
 **Clip.** A loop belonging to one track. Any length, including odd ones (15
 sixteenths is fine). **Only one clip per track plays at a time** — launching a
@@ -60,6 +63,7 @@ the view; the sidebar's meaning changes with it.
 |---|---|---|---|---|
 | Clip — kit | time | drum | mute | audition (play drum) |
 | Clip — instrument | time | pitch | mute | audition (play note) |
+| Clip — audio | time | the waveform, drawn in the clip's colour | mute | — |
 | Song | clip content, compressed | one clip per row | launch | section colour |
 | Arranger | time | track | mute | audition |
 | Keyboard | pitch, semitones | pitch, 4ths per row | — | — |
@@ -189,7 +193,7 @@ glance and add no mode.
 │ R │                                            │     │       │
 ├───┴────────────────────────────────────────────┴─────┴───────┤
 │ [SHIFT] [BACK]    READOUT    [E1][E2][E3]   [G1][G2]  [REC][▶]│
-│ [SONG][CLIP][KBD]  [KIT][SYNTH][SCALE]  [LOAD][SAVE]  [page]  │
+│ [SONG][CLIP][KBD] [KIT][SYNTH][AUDIO][SCALE] [LOAD][SAVE] [page]│
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -255,6 +259,8 @@ What each Deluge action becomes. Anything not listed follows the same pattern.
 | Shift + turn ▼▲ (clip colour) | Shift + **E3** |
 | Hold section pad + turn select (repeats) | Hold section pad + **E1** |
 | Hold arranger instance + turn select (which clip) | Hold instance + **E1** |
+| Hold tempo + press pad in audio clip (take tempo from clip) | Hold TEMPO + tap any pad |
+| ▼▲ + ◄► (set audio clip length to sample length) | Hold CLIP + tap time ruler |
 
 ### 3.7 Touch rules (the input system)
 
@@ -327,7 +333,10 @@ Rows are drums, X is time. Sidebar: mute, audition.
 
 New notes default to the velocity of the last note touched in that clip.
 Samples under 2 seconds default to ONCE (always play fully); longer ones to
-CUT (stop at note end) — the Deluge's rule.
+CUT (stop at note end) — the Deluge's rule. A fourth mode, **STRETCH**,
+time-stretches the sample to exactly fill the note's length at the current
+tempo, pitch unchanged — this is how the Deluge keeps loops inside kits
+locked to tempo. Uses the stretch engine (Part 6).
 
 ### 4.2 Clip view — instrument
 
@@ -338,14 +347,50 @@ Same as kit, except:
   chromatic. Shift+SCALE cycles modes (major, minor, dorian…). Hold SCALE and
   tap an audition pad to set the root. All clips share one scale (Deluge rule).
 - **The audition column is a keyboard.** It plays that row's pitch.
-- **Note length is real.** Hold and tap right to extend. CUT and LOOP samples
-  honour length; ONCE ignores it.
-- **Pitch** is `playbackRate = 2 ^ ((note − root) / 12)` — varispeed, the
-  classic sampler sound. Each track has a root note (the pitch the sample was
-  recorded at, default C3/60), adjustable on the PITCH gold knob.
+- **Note length is real.** Hold and tap right to extend. CUT, LOOP and
+  STRETCH samples honour length; ONCE ignores it.
+- **Pitch** is `playbackRate = 2 ^ ((note − root) / 12)` by default —
+  varispeed, the classic sampler sound, where higher notes also play shorter.
+  An optional per-track setting *unlinks pitch from speed*, so every note
+  keeps the sample's original duration at any pitch (via the stretch engine).
+  Each track has a root note (the pitch the sample was recorded at, default
+  C3/60), adjustable on the PITCH gold knob.
 - **E3 with nothing held transposes** the clip (octave; with shift, semitone).
 
-### 4.3 Song view
+### 4.3 Clip view — audio
+
+One long sample — a loop, a vocal phrase, a stem — that always fills its
+clip. The Deluge rule, kept exactly: **audio clips are always stretched to
+stay in sync with the song.** Change the tempo and the audio follows. Change
+the clip's length and the audio stretches to fill it.
+
+- **The grid shows the waveform** in the clip's colour: columns are time,
+  lit height is loudness. Zoom and scroll work exactly as in every other
+  view, so zooming in is how you see detail for trimming.
+- **Pitch and speed are unlinked by default** — tempo changes never change
+  pitch. Linking them gives varispeed instead (the turntable sound: faster
+  and higher together).
+
+| Action | Result |
+|---|---|
+| LOAD in an empty audio clip | Load a file. Initial length: the nearest whole number of bars (1, 2, 4, 8, 16) at the current tempo |
+| Shift + drag time ruler | Clip length — the audio stretches to fill it |
+| Hold CLIP + tap time ruler | Fit: set the clip length to the sample's natural length at the current tempo, so no stretch is applied |
+| Hold TEMPO + tap any pad | Take tempo from the clip: set the song's tempo so this clip plays unstretched |
+| Hold the first lit column + drag time ruler | Move the start point (trim) |
+| Hold the last lit column + drag time ruler | Move the end point (trim) |
+| E3, nothing held | Transpose in semitones, independent of speed |
+| Gold knobs | Volume, pan, filter — as for any track |
+| Tap mute | Toggle |
+
+"Fit" and "take tempo from clip" come straight from the Deluge. Trimming by
+holding an edge and dragging the ruler follows the law: *rulers move things
+in time.*
+
+A small helper: if a filename contains a tempo (`break_92bpm.wav`), use it
+for the initial length instead of rounding to bars.
+
+### 4.4 Song view
 
 Each row is one clip, from any track. Rows are freely ordered — by
 convention, grouped by section colour, top to bottom, in song order.
@@ -356,7 +401,7 @@ convention, grouped by section colour, top to bottom, in song order.
 | Action | Result |
 |---|---|
 | Tap a clip's pads | Enter its clip view |
-| Tap empty row | New clip, same type as last. Long-press: KIT / SYNTH buttons flash; tap one |
+| Tap empty row | New clip, same type as last. Long-press: KIT / SYNTH / AUDIO buttons flash; tap one |
 | Tap launch pad | Arm (starts at the next loop boundary of the longest playing clip; stops at its own end) |
 | Shift + launch pad | Instant launch or stop, jumping to the correct phase |
 | Long-press launch pad | Toggle solo |
@@ -371,7 +416,7 @@ convention, grouped by section colour, top to bottom, in song order.
 
 Launching a clip always stops any other clip on the same track.
 
-### 4.4 Arranger
+### 4.5 Arranger
 
 Rows are tracks. X is time; default zoom 1 column = 1 bar.
 
@@ -391,14 +436,14 @@ Rows are tracks. X is time; default zoom 1 column = 1 bar.
 REC + SONG in song view is the bridge from jamming to arranging: every launch
 and stop you make is written here as instances.
 
-### 4.5 Keyboard view (instrument clips)
+### 4.6 Keyboard view (instrument clips)
 
 Isomorphic layout: X ascends in semitones; each row is a 4th above the one
 below (guitar-like). Scale notes highlighted, root brightest. Plays on
 touch-down. Multi-touch chords work naturally. With REC on and playback
 running, notes record into the clip, quantized.
 
-### 4.6 Velocity and automation views (later)
+### 4.7 Velocity and automation views (later)
 
 The grid becomes a bar graph: each column's lit height is the value at that
 step.
@@ -423,18 +468,23 @@ leaving the grid:
 3. Hold the hat's audition pad and drag the time ruler: hat row is now 12
    steps. Polymeter.
 4. SONG. Long-press row 2 → SYNTH. Load a hi-hat. Y is now pitch, locked to
-   the scale. Sequence a melody out of the hi-hat.
-5. Both clips are in section A. Launch A. Play the gold knobs.
-6. Hold the kit clip, tap row 3: a clone in section B. Enter it, strip it
+   the scale. Sequence a melody out of the hi-hat — or import a `.mid` file
+   and let it drive the hi-hat.
+5. SONG. Long-press row 3 → AUDIO. Load a breakbeat recorded at 92 BPM. It
+   locks to the song's tempo without changing pitch. Hold its first lit
+   column and drag the ruler to trim off the pickup.
+6. All three clips are in section A. Launch A. Play the gold knobs. Drag the
+   tempo — the break follows.
+7. Hold the kit clip, tap row 4: a clone in section B. Enter it, strip it
    down. Same for the melody.
-7. Hold B's clips and drag them above A. The song reads top to bottom: B
+8. Hold B's clips and drag them above A. The song reads top to bottom: B
    (intro), A (main).
-8. Hold B's section pad + E1: 4 repeats. A: 8. Launch B — it plays four times
+9. Hold B's section pad + E1: 4 repeats. A: 8. Launch B — it plays four times
    and hands off to A.
-9. REC + SONG. Perform: launch sections, drop the drums, bring them back. It
-   lands in the arranger.
-10. Arranger: extend the outro. Make one bar unique and add a fill.
-11. Save.
+10. REC + SONG. Perform: launch sections, drop the drums, bring them back. It
+    lands in the arranger.
+11. Arranger: extend the outro. Make one bar unique and add a fill.
+12. Save.
 
 **If any step needs a panel, a dialog, or a menu dive (other than the iOS
 file picker), the design has failed.**
@@ -470,10 +520,36 @@ exactly as they are; the API underneath changes.
 - **Undo:** every edit goes through one mutation layer that snapshots the song
   model (it is small JSON). Cap around 100 steps.
 
-The standing rule "the clock is settled, don't refactor it" is **deliberately
-lifted for this change only**. The lookahead pattern, scheduling against
-`ctx.currentTime`, the separation of audio and visuals, and the margin
-diagnostic all remain non-negotiable.
+All of the above landed in milestone 3 and is verified. The transport is
+settled again.
+
+### Time-stretch
+
+Browsers have no pitch-preserving time-stretch. `playbackRate` always moves
+pitch and speed together (which is exactly right for varispeed, and exactly
+wrong for keeping a 92 BPM break at its own pitch in a 120 BPM song).
+
+- **Engine:** Signalsmith Stretch — MIT licence, an officially supported
+  Web Audio release (WASM + AudioWorklet), shipped as a single `.js`/`.mjs`
+  file. Vendored in `js/vendor/`, wrapped by `stretch.js`.
+- **Strategy: pre-render into a cache.** A stretched version of a sample is
+  rendered once, ahead of time, into an ordinary `AudioBuffer`, keyed by
+  (sample, trim points, ratio, transpose). Playback then uses a plain
+  `AudioBufferSourceNode.start(time)` — so the proven scheduler does not
+  change at all, and playback costs nothing extra per voice.
+- **On tempo change,** re-render in the background. Until the new render is
+  ready, keep playing the previous one at a matching varispeed rate, so
+  nothing drops out. A brief pitch wobble during a tempo drag is acceptable;
+  silence or a missed beat is not.
+- **Renders are a cache, never saved.** They are rebuilt from the sample and
+  the song tempo after a reload.
+- **Spike first.** Before building audio clips: a throwaway test page, like
+  the clock test. Load a loop, stretch it from its native tempo to the
+  song's, play it against the metronome, drag the tempo. Measure how long a
+  render takes on this iPad and listen for artefacts. If offline rendering
+  turns out too slow, the fallback is one live Stretch node per playing
+  audio clip — the library supports scheduled start and stop at future
+  context times.
 
 ---
 
@@ -508,6 +584,10 @@ diagnostic all remain non-negotiable.
 8. 11" versus 12.9" layout.
 9. Is drag-to-move notes worth adding later, given it competes with
    hold-and-tap?
+10. Stretch render time and quality on this iPad — settled by the Part 6
+    spike.
+11. ~~Recording into audio clips~~ — resolved: out of scope. Audio clips are
+    loaded from files only; no microphone input, no resampling.
 
 ---
 
