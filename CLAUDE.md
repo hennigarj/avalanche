@@ -296,3 +296,11 @@ main — do not create a feature branch or open a pull request unless
 I explicitly ask for one. GitHub Pages deploys straight from main, so
 this is the entire loop: you push, Pages redeploys, I reload on the
 iPad.
+
+  ## Critical: branch enforcement
+
+  Claude Code's default is to create claude/* branches. Override that:
+  1. Immediately check out main: `git checkout main`
+  2. All commits go directly to main
+  3. If you find yourself on a claude/* branch mid-session, switch back
+  4. Do NOT create feature branches unless explicitly asked
