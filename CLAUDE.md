@@ -64,9 +64,11 @@ Short form. Full reasoning in `DESIGN.md`.
 ## MIDI — two different things
 
 **Web MIDI API** (real-time hardware): out of scope permanently.
-**MIDI files (`.mid`)**: ordinary byte parsing. **In scope, planned** — import
-into instrument clips, export clips or the arrangement. Vendored as one ES
-module, no npm.
+**MIDI files (`.mid`)**: ordinary byte parsing. **Required.** Import into
+instrument clips is a core feature, not a nice-to-have — sequencing a
+sample-based instrument to a `.mid` file is a workflow this project must
+support. Export (clips or the arrangement, back to `.mid`) is in scope too,
+lower priority. Vendored as one ES module, no npm. See roadmap milestone 5.
 
 ## Constraints
 
@@ -200,17 +202,22 @@ not when the code works.
    audition column as keyboard, note length, root note, envelope and filter on
    the gold knobs. Minimal controls. *This is the milestone where it should
    start to click.*
-5. **The surface.** Final layout, rulers (scroll and zoom), context knobs and
+5. **MIDI file import.** Required, not optional. Parse a `.mid` file (vendored
+   parser, no dependency) and populate an instrument clip's notes from it.
+   Single track/channel only for now — a file with multiple instrument parts
+   just imports as one. The point is playing a sample-based synth against a
+   sequence written elsewhere, which is how this was used before this project
+   existed.
+6. **The surface.** Final layout, rulers (scroll and zoom), context knobs and
    readout, the full hold grammar in `input.js`.
-6. **Polymeter.** Clip length, row length, multiply, rotate.
-7. **Song view.** Clip rows, launch and arm, one clip per track, sections,
+7. **Polymeter.** Clip length, row length, multiply, rotate.
+8. **Song view.** Clip rows, launch and arm, one clip per track, sections,
    repeat counts, clone and move.
-8. **Arranger.** Instances, linked and unique, record performance from song
+9. **Arranger.** Instances, linked and unique, record performance from song
    view.
-9. **Keyboard view** and live recording.
-10. **Velocity and automation views**, probability and iterance, MIDI file
-    import/export.
-11. **Refinement.**
+10. **Keyboard view** and live recording.
+11. **Velocity and automation views**, probability and iterance, MIDI export.
+12. **Refinement.**
 
 Acceptance test for the whole app: the golden path in `DESIGN.md` Part 5.
 
